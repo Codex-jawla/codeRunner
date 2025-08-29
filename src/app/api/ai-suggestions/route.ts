@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({
-  apiKey: "AIzaSyBILyzLmrQABOQZp1Zp_Vjaucgahpd-a38"
+  apiKey: process.env.GEMINI_API_KEY
 });
 
 export async function POST(request: NextRequest) {
@@ -60,7 +60,7 @@ Provide ONLY the complete, improved code without any explanations, markdown form
 
 Generate the improved code now:`;
 
-    // console.log("Making Gemini API call...");
+    console.log("Making Gemini API call...");
 
     const response = await ai.models.generateContent({
       model: "gemini-2.0-flash-exp",
@@ -82,7 +82,7 @@ Generate the improved code now:`;
       .replace(/```[\w]*\n?/g, '') // Remove code block markers
       .trim();
 
-    // console.log("Generated code length:", cleanedCode.length);
+    console.log("Generated code length:", cleanedCode.length);
 
     return NextResponse.json({
       generatedCode: cleanedCode,

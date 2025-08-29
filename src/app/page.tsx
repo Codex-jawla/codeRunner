@@ -1,28 +1,30 @@
-"use client";
-import { useEffect, useState } from "react";
+'use client';
+import { useEffect, useState, useRef } from "react";
+import { io, Socket } from "socket.io-client";
 import dynamic from "next/dynamic";
 import { languageOptions } from "./utils/languages";
 import OutputPanel from "./components/OuputPanel";
 import AISuggestions from "./components/AISuggestions";
 import axios from "axios";
+import { Users, Copy, Check, X, UserPlus, Plus } from "lucide-react";
 
 const MonacoEditor = dynamic(() => import("./components/Editor"));
 
-// Judge0 Language ID mapping - This is crucial!
+// Judge0 Language ID mapping
 const LANGUAGE_ID_MAP: { [key: string]: number } = {
-  javascript: 63, // Node.js
-  python: 71, // Python 3
-  java: 62, // Java
-  cpp: 54, // C++ (GCC 9.2.0)
-  c: 50, // C (GCC 9.2.0)
-  csharp: 51, // C# (Mono 6.6.0.161)
-  php: 68, // PHP
-  ruby: 72, // Ruby
-  go: 60, // Go
-  rust: 73, // Rust
-  typescript: 74, // TypeScript
-  swift: 83, // Swift
-  kotlin: 78, // Kotlin
+  javascript: 63,
+  python: 71,
+  java: 62,
+  cpp: 54,
+  c: 50,
+  csharp: 51,
+  php: 68,
+  ruby: 72,
+  go: 60,
+  rust: 73,
+  typescript: 74,
+  swift: 83,
+  kotlin: 78,
 };
 
 interface OutputDetails {
@@ -40,13 +42,218 @@ interface OutputDetails {
 
 export default function Home() {
   const [language, setLanguage] = useState("javascript");
-  const [code, setCode] = useState(`// Write your code here
-console.log("Hello, World!");`);
+  const [code, setCode] = useState(``);
   const [processing, setProcessing] = useState(false);
-  const [outputDetails, setOutputDetails] = useState<OutputDetails | null>(
-    null
-  );
+  const [outputDetails, setOutputDetails] = useState<OutputDetails | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>("");
+
+  // Collaboration states
+  const [showCollabMenu, setShowCollabMenu] = useState(false);
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [isInRoom, setIsInRoom] = useState(false);
+  const [joinRoomInput, setJoinRoomInput] = useState("");
+  const [connectedUsers, setConnectedUsers] = useState(0);
+  const [copied, setCopied] = useState(false);
+
+  const socketRef = useRef<Socket | null>(null);
+
+
+  const changeLanguage = () => {
+    if (language === "javascript") {
+      setCode(`// Welcome to CodePilot! 🚀
+// Click the Collaborate button to start coding with friends!
+
+// Try the collaboration features:
+// 1. Click 'Collaborate' to create or join a room
+// 2. Share the room ID with friends
+// 3. Code together in real-time!
+
+console.log("Hello, World!");
+
+function fibonacci(n) {
+  if (n <= 1) return n;
+  return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+console.log("Fibonacci sequence:");
+for (let i = 0; i < 10; i++) {
+  console.log(fibonacci(i));
+}`)
+    } else if (language === "python") {
+      setCode(`
+// Welcome to CodePilot! 🚀
+// Click the Collaborate button to start coding with friends!
+
+// Try the collaboration features:
+// 1. Click 'Collaborate' to create or join a room
+// 2. Share the room ID with friends
+// 3. Code together in real-time!
+
+
+print("Hello, World!")
+
+def fibonacci(n):
+    if n <= 1:
+      return n
+    return fibonacci(n - 1) + fibonacci(n - 2)
+
+print("Fibonacci sequence:")
+    for i in range(10):
+      print(fibonacci(i))
+      `)
+    } else if (language === "cpp") {
+      setCode(`// Welcome to CodePilot! 🚀
+// Click the Collaborate button to start coding with friends!
+
+// Try the collaboration features:
+// 1. Click 'Collaborate' to create or join a room
+// 2. Share the room ID with friends
+// 3. Code together in real-time!
+
+#include <iostream>
+using namespace std;
+
+int fibonacci(int n) {
+    if (n <= 1) return n;
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+int main() {
+    cout << "Hello, World!" << endl;
+    cout << "Fibonacci sequence:" << endl;
+    for (int i = 0; i < 10; i++) {
+        cout << fibonacci(i) << endl;
+    }
+    return 0;
+}
+`)
+    } else {
+      setCode(`// Welcome to CodePilot! 🚀
+// Click the Collaborate button to start coding with friends!
+
+// Try the collaboration features:
+// 1. Click 'Collaborate' to create or join a room
+// 2. Share the room ID with friends
+// 3. Code together in real-time!
+`)
+
+    }
+  }
+
+  useEffect(() => {
+    changeLanguage();
+  }, [language]);
+
+
+  useEffect(() => {
+    // Initialize socket once
+    if (!socketRef.current) {
+      socketRef.current = io("https://code-compiler-backend-wno4.onrender.com", {
+        transports: ["websocket", "polling"],
+      });
+    }
+
+    const socket = socketRef.current;
+
+    // Listen for code changes from others
+    socket.on("Code_changing", (data: { code: string }) => {
+      setCode(data.code);
+    });
+
+    // Listen for language changes
+    socket.on("change_configuration", (data: { language: string }) => {
+      setLanguage(data.language);
+    });
+
+    // Listen for successful room join
+    socket.on("joined_Successfully", (message: string) => {
+      console.log("✅ Room joined successfully:", message);
+      setIsInRoom(true);
+      setShowCollabMenu(false);
+    });
+
+    // Listen for users in room updates
+    socket.on("UsersInRoom", (users: string[]) => {
+      console.log("👥 Users in room:", users);
+      console.log("📊 Total users count:", users.length);
+      setConnectedUsers(users.length);
+    });
+
+    // Listen for code run by others
+    socket.on("code_ran_by_other", (data: { id: string }) => {
+      console.log(`Code run by user: ${data.id}`);
+      // You can add visual feedback here if needed
+    });
+
+    return () => {
+      socket.off("Code_changing");
+      socket.off("change_configuration");
+      socket.off("joined_Successfully");
+      socket.off("UsersInRoom");
+      socket.off("code_ran_by_other");
+    };
+  }, []);
+
+  // Generate random room ID
+  const generateRoomId = () => {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  };
+
+  // Create a new room
+  const createRoom = () => {
+    const newRoomId = generateRoomId();
+    console.log("🚀 Creating room with ID:", newRoomId);
+    setRoomId(newRoomId);
+
+    if (socketRef.current) {
+      // Join the room using your backend's joinRoom event
+      socketRef.current.emit("joinRoom", newRoomId);
+      console.log("📡 Emitted joinRoom event with ID:", newRoomId);
+    }
+  };
+
+  // Join existing room
+  const joinRoom = () => {
+    if (joinRoomInput.trim() && socketRef.current) {
+      const roomToJoin = joinRoomInput.trim().toUpperCase();
+      console.log("🔗 Attempting to join room:", roomToJoin);
+      setRoomId(roomToJoin);
+      setJoinRoomInput(""); // Clear input after joining
+
+      // Join the room using your backend's joinRoom event
+      socketRef.current.emit("joinRoom", roomToJoin);
+      console.log("📡 Emitted joinRoom event with ID:", roomToJoin);
+    } else {
+      console.log("❌ Cannot join room: No room ID provided");
+    }
+  };
+
+  // Leave room
+  const leaveRoom = () => {
+    if (socketRef.current && roomId) {
+      // Disconnect from socket to leave all rooms
+      socketRef.current.disconnect();
+      // Reconnect to maintain connection but leave rooms
+      socketRef.current.connect();
+    }
+    setRoomId(null);
+    setIsInRoom(false);
+    setConnectedUsers(0);
+    setShowCollabMenu(false);
+  };
+
+  // Copy room ID to clipboard
+  const copyRoomId = async () => {
+    if (roomId) {
+      try {
+        await navigator.clipboard.writeText(roomId);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy: ', err);
+      }
+    }
+  };
 
   const runCode = async () => {
     if (!code.trim()) {
@@ -54,7 +261,6 @@ console.log("Hello, World!");`);
       return;
     }
 
-    // Check if language is supported
     if (!LANGUAGE_ID_MAP[language]) {
       alert(`Language ${language} is not supported yet!`);
       return;
@@ -71,17 +277,16 @@ console.log("Hello, World!");`);
     const languageId = LANGUAGE_ID_MAP[language];
 
     const formData = {
-      language_id: languageId, // Use numeric ID instead of string
-      source_code: btoa(code),
-      stdin: btoa(""), // Empty stdin
+      language_id: languageId,
+      source_code: btoa(unescape(encodeURIComponent(code))),
+      stdin: btoa(""),
     };
 
-    // Debug: Log what we're sending
     console.log("Sending to Judge0:", {
       language_id: languageId,
       language_name: language,
       source_code_length: code.length,
-      base64_encoded: true,
+      base64_encoded: true
     });
 
     setDebugInfo(`Submitting ${language} (ID: ${languageId}) code...`);
@@ -91,7 +296,7 @@ console.log("Hello, World!");`);
       url: "https://judge0-ce.p.rapidapi.com/submissions",
       params: {
         base64_encoded: "true",
-        fields: "*",
+        fields: "*"
       },
       headers: {
         "Content-Type": "application/json",
@@ -120,18 +325,12 @@ console.log("Hello, World!");`);
         let errorMessage = "Unknown error occurred";
 
         if (err.response) {
-          // Server responded with error status
           console.error("Response data:", err.response.data);
           console.error("Response status:", err.response.status);
-          errorMessage =
-            err.response.data?.error ||
-            `HTTP ${err.response.status}: ${err.response.statusText}`;
+          errorMessage = err.response.data?.error || `HTTP ${err.response.status}: ${err.response.statusText}`;
         } else if (err.request) {
-          // Request was made but no response received
-          errorMessage =
-            "No response from server. Check your internet connection.";
+          errorMessage = "No response from server. Check your internet connection.";
         } else {
-          // Something else happened
           errorMessage = err.message;
         }
 
@@ -139,7 +338,7 @@ console.log("Hello, World!");`);
         setDebugInfo(`Error: ${errorMessage}`);
         setOutputDetails({
           status: { id: -1, description: "API Error" },
-          stderr: btoa(`API Error: ${errorMessage}`),
+          stderr: btoa(`API Error: ${errorMessage}`)
         });
       });
   };
@@ -150,7 +349,7 @@ console.log("Hello, World!");`);
       url: `https://judge0-ce.p.rapidapi.com/submissions/${token}`,
       params: {
         base64_encoded: "true",
-        fields: "*",
+        fields: "*"
       },
       headers: {
         "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
@@ -167,7 +366,6 @@ console.log("Hello, World!");`);
 
       setDebugInfo(`Status: ${statusDescription} (ID: ${statusId})`);
 
-      // Status 1 = In Queue, Status 2 = Processing
       if (statusId === 1 || statusId === 2) {
         setTimeout(() => {
           checkStatus(token);
@@ -185,7 +383,7 @@ console.log("Hello, World!");`);
       setDebugInfo(`Status check failed: ${err}`);
       setOutputDetails({
         status: { id: -1, description: "Status check failed" },
-        stderr: btoa("Failed to get execution results. Please try again."),
+        stderr: btoa("Failed to get execution results. Please try again.")
       });
     }
   };
@@ -202,18 +400,14 @@ console.log("Hello, World!");`);
     let statusId = outputDetails.status?.id;
 
     if (statusId === 6) {
-      // Compilation error
       return (
         <pre className="px-2 py-1 font-normal text-xs text-red-500 whitespace-pre-wrap">
           <strong>Compilation Error:</strong>
           {"\n"}
-          {outputDetails.compile_output
-            ? atob(outputDetails.compile_output)
-            : "Compilation failed"}
+          {outputDetails.compile_output ? atob(outputDetails.compile_output) : "Compilation failed"}
         </pre>
       );
     } else if (statusId === 3) {
-      // Accepted/Success
       const stdout = outputDetails.stdout ? atob(outputDetails.stdout) : "";
       const stderr = outputDetails.stderr ? atob(outputDetails.stderr) : "";
 
@@ -233,43 +427,37 @@ console.log("Hello, World!");`);
               {stderr}
             </pre>
           )}
-          {!stdout && !stderr && <pre className="text-gray-400">No output</pre>}
+          {!stdout && !stderr && (
+            <pre className="text-gray-400">No output</pre>
+          )}
         </div>
       );
     } else if (statusId === 5) {
-      // Time Limit Exceeded
       return (
         <pre className="px-2 py-1 font-normal text-xs text-red-500">
           <strong>Time Limit Exceeded</strong>
         </pre>
       );
     } else if (statusId === 4) {
-      // Wrong Answer
       return (
         <pre className="px-2 py-1 font-normal text-xs text-yellow-500">
           <strong>Wrong Answer</strong>
         </pre>
       );
     } else if (statusId === 11 || statusId === 12 || statusId === 13) {
-      // Runtime Error variations
       return (
         <pre className="px-2 py-1 font-normal text-xs text-red-500 whitespace-pre-wrap">
           <strong>Runtime Error:</strong>
           {"\n"}
-          {outputDetails.stderr
-            ? atob(outputDetails.stderr)
-            : "Runtime error occurred"}
+          {outputDetails.stderr ? atob(outputDetails.stderr) : "Runtime error occurred"}
         </pre>
       );
     } else {
-      // Other errors
       return (
         <pre className="px-2 py-1 font-normal text-xs text-red-500 whitespace-pre-wrap">
           <strong>Error (Status {statusId}):</strong>
           {"\n"}
-          {outputDetails.stderr
-            ? atob(outputDetails.stderr)
-            : `Unknown error occurred`}
+          {outputDetails.stderr ? atob(outputDetails.stderr) : `Unknown error occurred`}
         </pre>
       );
     }
@@ -281,10 +469,21 @@ console.log("Hello, World!");`);
         <h1 className="text-xl font-bold flex items-center gap-2">
           🚀 CodePilot
         </h1>
+
         <div className="flex items-center gap-3">
           <select
             value={language}
-            onChange={(e) => setLanguage(e.target.value)}
+            onChange={(e) => {
+              const newLang = e.target.value;
+              setLanguage(newLang);
+
+              if (socketRef.current && roomId) {
+                socketRef.current.emit("configuration_change", {
+                  room: roomId,
+                  language: newLang,
+                });
+              }
+            }}
             className="bg-[#161b22] px-3 py-1 rounded border border-gray-600"
             disabled={processing}
           >
@@ -294,13 +493,111 @@ console.log("Hello, World!");`);
               </option>
             ))}
           </select>
+
+          {/* Collaboration Button and Menu */}
+          <div className="relative">
+            {!isInRoom ? (
+              <button
+                onClick={() => setShowCollabMenu(!showCollabMenu)}
+                className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded transition-colors"
+              >
+                <Users className="w-4 h-4" />
+                <span>Collaborate</span>
+              </button>
+            ) : (
+              <div className="flex items-center space-x-2">
+                <div className="bg-green-600 px-3 py-2 rounded flex items-center space-x-2">
+                  <Users className="w-4 h-4" />
+                  <span className="text-sm font-medium">Room: {roomId}</span>
+                  <span className="text-xs bg-green-700 px-2 py-1 rounded">
+                    {connectedUsers} user{connectedUsers !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <button
+                  onClick={copyRoomId}
+                  className="bg-blue-600 hover:bg-blue-700 p-2 rounded transition-colors"
+                  title="Copy Room ID"
+                >
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={leaveRoom}
+                  className="bg-red-600 hover:bg-red-700 p-2 rounded transition-colors"
+                  title="Leave Room"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Collaboration Dropdown Menu */}
+            {showCollabMenu && !isInRoom && (
+              <div className="absolute top-full right-0 mt-2 bg-[#161b22] border border-gray-600 rounded-lg shadow-lg p-4 w-80 z-50">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold mb-3">Start Collaborating</h3>
+
+                  {/* Create Room Option */}
+                  <div className="space-y-2">
+                    <button
+                      onClick={createRoom}
+                      className="w-full flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Create New Room</span>
+                    </button>
+                    <p className="text-xs text-gray-400 text-center">
+                      Creates a room instantly with a random ID that you can share
+                    </p>
+                  </div>
+
+                  <div className="border-t border-gray-600 pt-4">
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-300">
+                        Or join existing room:
+                      </label>
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          placeholder="Enter Room ID"
+                          value={joinRoomInput}
+                          onChange={(e) => setJoinRoomInput(e.target.value.toUpperCase())}
+                          className="flex-1 bg-[#0d1117] border border-gray-600 rounded px-3 py-2 text-sm"
+                          maxLength={6}
+                        />
+                        <button
+                          onClick={joinRoom}
+                          disabled={!joinRoomInput.trim()}
+                          className="flex items-center space-x-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-3 py-2 rounded transition-colors"
+                        >
+                          <UserPlus className="w-4 h-4" />
+                          <span>Join</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setShowCollabMenu(false)}
+                    className="w-full text-center text-gray-400 hover:text-white text-sm mt-2"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
-            className={`px-4 py-2 rounded transition-colors ${
-              processing
-                ? "bg-gray-600 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700"
-            }`}
-            onClick={runCode}
+            className={`px-4 py-2 rounded transition-colors ${processing
+              ? "bg-gray-600 cursor-not-allowed"
+              : "bg-blue-600 hover:bg-blue-700"
+              }`}
+            onClick={() => {
+              runCode();
+              if (socketRef.current && roomId) {
+                socketRef.current.emit("code_ran", { room: roomId });
+              }
+            }}
             disabled={processing}
           >
             {processing ? "⏳ Running..." : "▶ Run"}
@@ -308,18 +605,43 @@ console.log("Hello, World!");`);
         </div>
       </header>
 
+      {/* Room Status Banner */}
+      {isInRoom && (
+        <div className="mb-4 p-3 bg-green-900/50 border border-green-600 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Users className="w-4 h-4 text-green-400" />
+              <span className="text-green-300 font-medium">
+                Collaborating in room {roomId} with {connectedUsers} user{connectedUsers !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="text-xs text-green-400">
+              All changes are synced in real-time
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Debug Info Panel */}
       {debugInfo && (
         <div className="mb-4 p-3 bg-gray-800 rounded border border-gray-600">
-          <h3 className="text-sm font-semibold text-yellow-400 mb-1">
-            Debug Info:
-          </h3>
+          <h3 className="text-sm font-semibold text-yellow-400 mb-1">Debug Info:</h3>
           <p className="text-xs text-gray-300">{debugInfo}</p>
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <MonacoEditor language={language} code={code} setCode={setCode} />
+        <MonacoEditor
+          language={language}
+          code={code}
+          setCode={(newCode: string) => {
+            setCode(newCode);
+
+            if (socketRef.current && roomId) {
+              socketRef.current.emit("code_change", { room: roomId, input: newCode });
+            }
+          }}
+        />
         <div className="grid grid-cols-1 gap-4">
           <OutputPanel output={getOutput(outputDetails)} />
           <AISuggestions

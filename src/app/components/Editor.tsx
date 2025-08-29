@@ -5,7 +5,8 @@ import { loader } from "@monaco-editor/react";
 import { Copy } from "lucide-react";
 import toast from "react-hot-toast";
 
-export default function CodeEditor({ language, code, setCode }: any) {
+
+export default function CodeEditor({ language, code, setCode }: any){
   useEffect(() => {
     loader.init().then((monaco) => {
       monaco.languages.typescript.javascriptDefaults.setEagerModelSync(true);
@@ -39,26 +40,26 @@ export default function CodeEditor({ language, code, setCode }: any) {
     <div className="bg-[#161b22] rounded p-2">
       <Editor
         height="80vh"
-        theme="vs-dark"
-        defaultLanguage={language}
-        value={code}
-        onChange={(value) => setCode(value)}
-        options={{
-          minimap: { enabled: false },
-          fontSize: 14,
-          wordWrap: "on",
-          automaticLayout: true,
-          scrollBeyondLastLine: false,
-          lineNumbers: "on",
-          renderLineHighlight: "all",
-          contextmenu: true,
-          tabSize: 2,
-          formatOnPaste: true,
-          formatOnType: true,
-          suggestOnTriggerCharacters: true,
-          acceptSuggestionOnEnter: "on",
-        }}
-        loading={<div className="text-white">Loading editor...</div>}
+  theme="vs-dark"
+  language={language}        // 👈 use "language", not defaultLanguage
+  value={code}               // 👈 controlled by React
+  onChange={(value) => setCode(value || "")}  // 👈 update parent
+  options={{
+    minimap: { enabled: false },
+    fontSize: 14,
+    wordWrap: "on",
+    automaticLayout: true,
+    scrollBeyondLastLine: false,
+    lineNumbers: "on",
+    renderLineHighlight: "all",
+    contextmenu: true,
+    tabSize: 2,
+    formatOnPaste: true,
+    formatOnType: true,
+    suggestOnTriggerCharacters: true,
+    acceptSuggestionOnEnter: "on",
+  }}
+  loading={<div className="text-white">Loading editor...</div>}
       />
     </div>
   </div>
